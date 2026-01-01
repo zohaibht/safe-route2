@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -8,40 +8,22 @@ import {
   TextInput, 
   ScrollView, 
   SafeAreaView, 
-  StatusBar, 
+  StatusBar,
   Dimensions,
   Image,
-  Alert
+  FlatList
 } from 'react-native';
+import { repository } from './db';
+import { UserRole, Student, Driver, AppState } from './types';
 
-// --- Types ---
-type UserRole = 'ADMIN' | 'DRIVER' | 'PARENT';
-type Screen = 'ROLE_SELECTION' | 'LOGIN' | 'DASHBOARD' | 'HISTORY' | 'DRIVER_PORTAL' | 'SOS' | 'ANALYTICS';
-
-interface User {
-  id: string;
-  role: UserRole;
-  name: string;
-}
-
-// --- Mock Data ---
-const MOCK_DRIVERS = [
-  { id: 'd1', name: 'Mr. Roberts', plate: 'V-402', route: 'Morning Run - North' }
-];
-
+// --- Constants ---
+const { width, height } = Dimensions.get('window');
 const COLORS = {
   primary: '#1973f0',
   admin: '#2563eb',
   driver: '#10b981',
   parent: '#8b5cf6',
   error: '#ef4444',
-  light: {
-    background: '#f8fafc',
-    surface: '#ffffff',
-    text: '#0f172a',
-    subtext: '#64748b',
-    border: '#e2e8f0',
-  },
   dark: {
     background: '#0B1120',
     surface: '#1E293B',
@@ -52,282 +34,268 @@ const COLORS = {
 };
 
 // --- Components ---
-
 const Icon = ({ name, color, size = 24 }: { name: string; color: string; size?: number }) => (
   <Text style={{ fontFamily: 'Material Symbols Outlined', fontSize: size, color }}>
     {name}
   </Text>
 );
 
+// --- Main Application ---
 export default function App() {
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
+  const [screen, setScreen] = useState<'ROLES' | 'LOGIN' | 'DASHBOARD' | 'SOS' | 'HISTORY' | 'ANALYTICS'>('ROLES');
+  const [user, setUser] = useState<any>(null);
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
-  const [currentScreen, setCurrentScreen] = useState<Screen>('ROLE_SELECTION');
+  const [appData, setAppData] = useState<AppState>(repository.getData());
 
-  const theme = isDarkMode ? COLORS.dark : COLORS.light;
+  const theme = COLORS.dark;
 
-  // Persistence simulation
-  const handleLogout = () => {
+  const refreshData = () => setAppData(repository.getData());
+
+  const navigate = (to: typeof screen) => setScreen(to);
+
+  const logout = () => {
     setUser(null);
     setPendingRole(null);
-    setCurrentScreen('ROLE_SELECTION');
+    setScreen('ROLES');
   };
 
-  const handleRoleSelect = (role: UserRole) => {
-    setPendingRole(role);
-    setCurrentScreen('LOGIN');
-  };
-
-  const handleLoginSuccess = (loggedInUser: User) => {
-    setUser(loggedInUser);
-    if (loggedInUser.role === 'ADMIN') setCurrentScreen('DASHBOARD');
-    else if (loggedInUser.role === 'DRIVER') setCurrentScreen('DRIVER_PORTAL');
-    else if (loggedInUser.role === 'PARENT') setCurrentScreen('DASHBOARD');
-  };
-
-  // Permission Logic Wrapper
-  const navigateTo = (screen: Screen) => {
-    if (!user) {
-      setCurrentScreen('ROLE_SELECTION');
-      return;
-    }
-    
-    const adminPages: Screen[] = ['DASHBOARD', 'ANALYTICS', 'SOS', 'HISTORY'];
-    const driverPages: Screen[] = ['DRIVER_PORTAL'];
-    const parentPages: Screen[] = ['DASHBOARD', 'HISTORY']; // Parent sees main dashboard (ParentHome) and history
-
-    if (user.role === 'PARENT' && !parentPages.includes(screen)) return;
-    if (user.role === 'DRIVER' && !driverPages.includes(screen)) return;
-    
-    setCurrentScreen(screen);
-  };
-
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case 'ROLE_SELECTION':
-        return <RoleSelectionScreen onSelect={handleRoleSelect} theme={theme} />;
-      case 'LOGIN':
-        return <LoginScreen role={pendingRole!} onLogin={handleLoginSuccess} onBack={() => setCurrentScreen('ROLE_SELECTION')} theme={theme} />;
-      case 'DASHBOARD':
-        return user?.role === 'ADMIN' ? 
-          <AdminDashboard navigateTo={navigateTo} theme={theme} /> : 
-          <ParentHome navigateTo={navigateTo} theme={theme} />;
-      case 'HISTORY':
-        return <HistoryScreen onBack={() => navigateTo('DASHBOARD')} theme={theme} />;
-      case 'DRIVER_PORTAL':
-        return <DriverPortal theme={theme} user={user!} />;
-      case 'SOS':
-        return <SOSScreen onBack={() => navigateTo('DASHBOARD')} theme={theme} />;
-      case 'ANALYTICS':
-        return <AnalyticsScreen onBack={() => navigateTo('DASHBOARD')} theme={theme} />;
-      default:
-        return <RoleSelectionScreen onSelect={handleRoleSelect} theme={theme} />;
-    }
+  const handleLogin = (u: any) => {
+    setUser(u);
+    navigate('DASHBOARD');
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
       
-      {/* Global Theme Toggle */}
-      <View style={styles.topActions}>
-        <TouchableOpacity 
-          style={[styles.iconButton, { backgroundColor: theme.surface }]} 
-          onPress={() => setIsDarkMode(!isDarkMode)}
-        >
-          <Icon name={isDarkMode ? 'light_mode' : 'dark_mode'} color={theme.text} />
-        </TouchableOpacity>
-        
-        {user && (
-          <TouchableOpacity 
-            style={[styles.iconButton, { backgroundColor: theme.surface }]} 
-            onPress={handleLogout}
-          >
-            <Icon name="home" color={theme.text} />
+      {/* Global Header Actions */}
+      {user && (
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.circleBtn} onPress={logout}>
+            <Icon name="logout" color="#fff" />
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
-      {renderScreen()}
+      {screen === 'ROLES' && (
+        <RoleSelectionScreen onSelect={(r) => { setPendingRole(r); setScreen('LOGIN'); }} />
+      )}
+
+      {screen === 'LOGIN' && (
+        <LoginScreen 
+          role={pendingRole!} 
+          onBack={() => setScreen('ROLES')} 
+          onLogin={handleLogin} 
+          db={appData}
+        />
+      )}
+
+      {screen === 'DASHBOARD' && (
+        <Dashboard 
+          user={user} 
+          db={appData} 
+          onRefresh={refreshData} 
+          navigate={navigate}
+        />
+      )}
+
+      {screen === 'SOS' && <SOSScreen onBack={() => navigate('DASHBOARD')} />}
+      {screen === 'HISTORY' && <HistoryScreen onBack={() => navigate('DASHBOARD')} />}
+      {screen === 'ANALYTICS' && <AnalyticsScreen onBack={() => navigate('DASHBOARD')} />}
     </SafeAreaView>
   );
 }
 
 // --- Screens ---
 
-const RoleSelectionScreen = ({ onSelect, theme }: any) => (
-  <View style={styles.screenCenter}>
-    <View style={[styles.logoContainer, { backgroundColor: COLORS.primary }]}>
-      <Icon name="shield_person" color="#fff" size={48} />
+const RoleSelectionScreen = ({ onSelect }: any) => (
+  <View style={styles.centered}>
+    <View style={styles.logoContainer}>
+      <Icon name="shield_person" color="#fff" size={60} />
     </View>
-    <Text style={[styles.title, { color: theme.text }]}>SafeRoute 360</Text>
-    <Text style={[styles.subtitle, { color: theme.subtext }]}>Select access portal</Text>
+    <Text style={styles.title}>SafeRoute 360</Text>
+    <Text style={styles.subtitle}>Institutional Mobility Secured</Text>
 
     <View style={styles.roleList}>
-      <RoleCard icon="admin_panel_settings" title="Administrator" color={COLORS.admin} onPress={() => onSelect('ADMIN')} theme={theme} />
-      <RoleCard icon="directions_bus" title="Driver Portal" color={COLORS.driver} onPress={() => onSelect('DRIVER')} theme={theme} />
-      <RoleCard icon="family_history" title="Parent App" color={COLORS.parent} onPress={() => onSelect('PARENT')} theme={theme} />
+      <RoleCard icon="admin_panel_settings" title="Administrator" color={COLORS.admin} onPress={() => onSelect('ADMIN')} />
+      <RoleCard icon="directions_bus" title="Driver Portal" color={COLORS.driver} onPress={() => onSelect('DRIVER')} />
+      <RoleCard icon="family_history" title="Parent Access" color={COLORS.parent} onPress={() => onSelect('PARENT')} />
     </View>
   </View>
 );
 
-const RoleCard = ({ icon, title, color, onPress, theme }: any) => (
-  <TouchableOpacity style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={onPress}>
-    <View style={[styles.cardIcon, { backgroundColor: color }]}>
+const RoleCard = ({ icon, title, color, onPress }: any) => (
+  <TouchableOpacity style={styles.roleCard} onPress={onPress}>
+    <View style={[styles.roleIcon, { backgroundColor: color }]}>
       <Icon name={icon} color="#fff" />
     </View>
-    <Text style={[styles.cardTitle, { color: theme.text }]}>{title}</Text>
-    <Icon name="chevron_right" color={theme.subtext} />
+    <Text style={styles.roleText}>{title}</Text>
+    <Icon name="chevron_right" color={COLORS.dark.subtext} />
   </TouchableOpacity>
 );
 
-const LoginScreen = ({ role, onLogin, onBack, theme }: any) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+const LoginScreen = ({ role, onBack, onLogin, db }: any) => {
+  const [id, setId] = useState('');
+  const [pwd, setPwd] = useState('');
+  const [err, setErr] = useState('');
 
-  const handleAuth = () => {
-    if (role === 'ADMIN' && username === 'Admin' && password === '12345') {
-      onLogin({ id: 'a1', role: 'ADMIN', name: 'Super Admin' });
-    } else if (role === 'PARENT' && username === 'Parent' && password === '12345') {
-      onLogin({ id: 'p1', role: 'PARENT', name: 'Emma' });
-    } else if (role === 'DRIVER') {
-      const driver = MOCK_DRIVERS.find(d => d.name.toLowerCase() === username.toLowerCase() && d.plate === password);
-      if (driver) {
-        onLogin({ id: driver.id, role: 'DRIVER', name: driver.name });
-      } else {
-        setError('Driver not found or plate mismatch');
-      }
-    } else {
-      setError('Invalid credentials');
+  const auth = () => {
+    if (role === 'ADMIN' && id === 'Admin' && pwd === '12345') return onLogin({ role: 'ADMIN', name: 'Admin' });
+    if (role === 'PARENT' && id === 'Parent' && pwd === '12345') return onLogin({ role: 'PARENT', name: 'Emma' });
+    if (role === 'DRIVER') {
+      const driver = db.drivers.find((d: any) => d.driverName === id && d.vanNumberPlate === pwd);
+      if (driver) return onLogin({ ...driver, role: 'DRIVER' });
     }
+    setErr('Invalid Credentials');
   };
 
   return (
     <View style={styles.screenPadding}>
-      <TouchableOpacity onPress={onBack} style={styles.backButton}>
-        <Icon name="arrow_back" color={theme.text} />
-        <Text style={[styles.backText, { color: theme.text }]}>BACK</Text>
+      <TouchableOpacity onPress={onBack} style={styles.backRow}>
+        <Icon name="arrow_back" color="#fff" />
+        <Text style={styles.backText}>BACK</Text>
       </TouchableOpacity>
-      
-      <Text style={[styles.loginTitle, { color: theme.text }]}>{role} Login</Text>
-      
-      <View style={styles.form}>
-        <Text style={[styles.label, { color: theme.subtext }]}>{role === 'DRIVER' ? 'DRIVER NAME' : 'USERNAME'}</Text>
-        <TextInput 
-          style={[styles.input, { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border }]} 
-          value={username}
-          onChangeText={setUsername}
-          placeholder="Enter name"
-          placeholderTextColor={theme.subtext}
-        />
-
-        <Text style={[styles.label, { color: theme.subtext, marginTop: 20 }]}>{role === 'DRIVER' ? 'VAN PLATE #' : 'PASSWORD'}</Text>
-        <TextInput 
-          style={[styles.input, { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border }]} 
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="Enter password"
-          placeholderTextColor={theme.subtext}
-        />
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <TouchableOpacity style={styles.primaryButton} onPress={handleAuth}>
-          <Text style={styles.buttonText}>LOGIN</Text>
+      <Text style={styles.screenTitle}>{role} PORTAL</Text>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>ID / USERNAME</Text>
+        <TextInput style={styles.input} value={id} onChangeText={setId} placeholder="Enter ID" placeholderTextColor={COLORS.dark.subtext} />
+        <Text style={[styles.inputLabel, { marginTop: 24 }]}>PASSWORD / PLATE</Text>
+        <TextInput style={styles.input} value={pwd} onChangeText={setPwd} secureTextEntry placeholder="••••••" placeholderTextColor={COLORS.dark.subtext} />
+        {err ? <Text style={styles.errorText}>{err}</Text> : null}
+        <TouchableOpacity style={styles.primaryBtn} onPress={auth}>
+          <Text style={styles.btnText}>LOGIN</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 };
 
-const AdminDashboard = ({ navigateTo, theme }: any) => (
-  <ScrollView style={styles.screenPadding}>
-    <Text style={[styles.screenHeader, { color: theme.text }]}>Admin Panel</Text>
-    
-    <View style={styles.grid}>
-      <MenuBtn icon="analytics" label="Analytics" color={COLORS.primary} onPress={() => navigateTo('ANALYTICS')} theme={theme} />
-      <MenuBtn icon="sos" label="SOS" color={COLORS.error} onPress={() => navigateTo('SOS')} theme={theme} />
-      <MenuBtn icon="group" label="Students" color={COLORS.parent} theme={theme} />
-      <MenuBtn icon="local_taxi" label="Fleet" color={COLORS.driver} theme={theme} />
-    </View>
+const Dashboard = ({ user, db, onRefresh, navigate }: any) => {
+  const [tab, setTab] = useState<'FLEET' | 'STUDENTS'>('FLEET');
+  const [adding, setAdding] = useState(false);
 
-    <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Activity</Text>
-    <View style={[styles.activityCard, { backgroundColor: theme.surface }]}>
-      <Text style={[styles.activityText, { color: theme.text }]}>All routes operational</Text>
-      <Text style={{ color: theme.subtext, fontSize: 12 }}>Last update: 2 mins ago</Text>
+  // --- Admin ---
+  if (user.role === 'ADMIN') return (
+    <View style={styles.full}>
+      <View style={styles.headerRow}>
+        <Text style={styles.dashboardTitle}>Admin Console</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setAdding(!adding)}>
+          <Icon name={adding ? 'close' : 'add'} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {adding ? (
+        <ScrollView style={styles.padding}>
+          <EntityForm type={tab} onDone={() => { setAdding(false); onRefresh(); }} />
+        </ScrollView>
+      ) : (
+        <View style={styles.full}>
+          <View style={styles.actionGrid}>
+            <QuickAction icon="analytics" label="Analytics" color={COLORS.primary} onPress={() => navigate('ANALYTICS')} />
+            <QuickAction icon="sos" label="SOS Monitor" color={COLORS.error} onPress={() => navigate('SOS')} />
+          </View>
+          <View style={styles.tabs}>
+            <TouchableOpacity style={[styles.tab, tab === 'FLEET' && styles.activeTab]} onPress={() => setTab('FLEET')}>
+              <Text style={[styles.tabLabel, tab === 'FLEET' && styles.activeTabText]}>FLEET</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.tab, tab === 'STUDENTS' && styles.activeTab]} onPress={() => setTab('STUDENTS')}>
+              <Text style={[styles.tabLabel, tab === 'STUDENTS' && styles.activeTabText]}>STUDENTS</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.padding}>
+            {tab === 'FLEET' ? 
+              db.drivers.map((d: Driver) => <ListCard key={d.id} title={d.driverName} sub={d.vanNumberPlate} icon="local_taxi" color={COLORS.driver} />) :
+              db.students.map((s: Student) => <ListCard key={s.id} title={s.studentName} sub={`Grade ${s.classGrade}`} icon="school" color={COLORS.parent} />)
+            }
+          </ScrollView>
+        </View>
+      )}
     </View>
-  </ScrollView>
+  );
+
+  // --- Driver ---
+  if (user.role === 'DRIVER') return (
+    <View style={styles.screenPadding}>
+      <Text style={styles.dashboardTitle}>Active Route</Text>
+      <View style={[styles.heroCard, { backgroundColor: COLORS.driver }]}>
+        <Text style={styles.heroLabel}>CURRENT VAN</Text>
+        <Text style={styles.heroValue}>{user.vanNumberPlate}</Text>
+        <Text style={styles.heroSub}>{user.routeName}</Text>
+      </View>
+      <View style={styles.mapPlaceholder}>
+        <Icon name="explore" color={COLORS.dark.subtext} size={64} />
+        <Text style={styles.mapText}>Live GPS Tracking Active</Text>
+      </View>
+    </View>
+  );
+
+  // --- Parent ---
+  return (
+    <View style={styles.screenPadding}>
+      <Text style={styles.dashboardTitle}>Parent App</Text>
+      <View style={[styles.heroCard, { backgroundColor: COLORS.primary }]}>
+        <Text style={styles.heroLabel}>STATUS: LEO'S BUS</Text>
+        <Text style={styles.heroValue}>4 mins away</Text>
+        <View style={styles.progressContainer}><View style={styles.progressFill} /></View>
+      </View>
+      <TouchableOpacity style={styles.menuItem} onPress={() => navigate('HISTORY')}>
+        <Icon name="history" color={COLORS.primary} />
+        <Text style={styles.menuText}>View Attendance Logs</Text>
+        <Icon name="chevron_right" color={COLORS.dark.subtext} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// --- Helper UI Components ---
+
+const EntityForm = ({ type, onDone }: any) => {
+  const [v1, setV1] = useState('');
+  const [v2, setV2] = useState('');
+  const save = () => {
+    if (type === 'FLEET') repository.addDriver({ driverName: v1, vanNumberPlate: v2, routeName: 'Route A', phoneNumber: '555' });
+    else repository.addStudent({ studentName: v1, classGrade: v2, parentName: 'P', parentPhone: '555', homeLocation: 'H', driverId: '' });
+    onDone();
+  };
+  return (
+    <View style={styles.form}>
+      <Text style={styles.inputLabel}>{type === 'FLEET' ? 'DRIVER NAME' : 'STUDENT NAME'}</Text>
+      <TextInput style={styles.input} value={v1} onChangeText={setV1} />
+      <Text style={[styles.inputLabel, { marginTop: 20 }]}>{type === 'FLEET' ? 'PLATE #' : 'GRADE'}</Text>
+      <TextInput style={styles.input} value={v2} onChangeText={setV2} />
+      <TouchableOpacity style={styles.primaryBtn} onPress={save}>
+        <Text style={styles.btnText}>SAVE RECORD</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const QuickAction = ({ icon, label, color, onPress }: any) => (
+  <TouchableOpacity style={styles.actionBtn} onPress={onPress}>
+    <View style={[styles.actionIcon, { backgroundColor: color + '22' }]}>
+      <Icon name={icon} color={color} size={32} />
+    </View>
+    <Text style={styles.actionLabel}>{label}</Text>
+  </TouchableOpacity>
 );
 
-const ParentHome = ({ navigateTo, theme }: any) => (
-  <View style={styles.screenPadding}>
-    <Text style={[styles.screenHeader, { color: theme.text }]}>Parent App</Text>
-    
-    <View style={[styles.statusCard, { backgroundColor: COLORS.primary }]}>
-      <Text style={styles.statusLabel}>BUS STATUS</Text>
-      <Text style={styles.statusTime}>Arriving: 4 mins</Text>
-      <View style={styles.progressBar}><View style={[styles.progress, { width: '80%' }]} /></View>
+const ListCard = ({ title, sub, icon, color }: any) => (
+  <View style={styles.listCard}>
+    <View style={[styles.listIcon, { backgroundColor: color }]}>
+      <Icon name={icon} color="#fff" size={18} />
     </View>
-
-    <TouchableOpacity style={[styles.wideCard, { backgroundColor: theme.surface }]} onPress={() => navigateTo('HISTORY')}>
-      <Icon name="history" color={COLORS.primary} />
-      <Text style={[styles.wideCardText, { color: theme.text }]}>Attendance History</Text>
-    </TouchableOpacity>
+    <View style={styles.listInfo}>
+      <Text style={styles.listTitle}>{title}</Text>
+      <Text style={styles.listSub}>{sub}</Text>
+    </View>
   </View>
 );
 
-const DriverPortal = ({ theme, user }: any) => (
-  <View style={styles.screenPadding}>
-    <Text style={[styles.screenHeader, { color: theme.text }]}>Driver Portal</Text>
-    <Text style={[styles.subtitle, { color: theme.subtext }]}>Welcome, {user.name}</Text>
-
-    <View style={[styles.mapPlaceholder, { backgroundColor: theme.surface }]}>
-       <Icon name="map" color={theme.subtext} size={48} />
-       <Text style={{ color: theme.subtext, marginTop: 10 }}>Active Tracking Map</Text>
-    </View>
-
-    <TouchableOpacity style={[styles.primaryButton, { marginTop: 20 }]}>
-      <Text style={styles.buttonText}>START ROUTE</Text>
-    </TouchableOpacity>
-  </View>
-);
-
-const HistoryScreen = ({ onBack, theme }: any) => (
-  <View style={styles.screenPadding}>
-    <TouchableOpacity onPress={onBack} style={styles.backButton}>
-      <Icon name="arrow_back" color={theme.text} />
-      <Text style={[styles.backText, { color: theme.text }]}>DASHBOARD</Text>
-    </TouchableOpacity>
-    <Text style={[styles.screenHeader, { color: theme.text }]}>History</Text>
-    <ScrollView>
-      <HistoryItem date="Oct 24" status="Arrived" time="3:45 PM" theme={theme} />
-      <HistoryItem date="Oct 24" status="Boarded" time="7:30 AM" theme={theme} />
-      <HistoryItem date="Oct 23" status="Arrived" time="3:50 PM" theme={theme} />
-    </ScrollView>
-  </View>
-);
-
-const HistoryItem = ({ date, status, time, theme }: any) => (
-  <View style={[styles.historyItem, { borderBottomColor: theme.border }]}>
-    <View>
-      <Text style={[styles.historyDate, { color: theme.text }]}>{date}</Text>
-      <Text style={[styles.historyStatus, { color: theme.subtext }]}>{status}</Text>
-    </View>
-    <Text style={[styles.historyTime, { color: COLORS.primary }]}>{time}</Text>
-  </View>
-);
-
-const SOSScreen = ({ onBack, theme }: any) => (
-  <View style={[styles.screenPadding, { backgroundColor: '#450a0a' }]}>
-     <TouchableOpacity onPress={onBack} style={styles.backButton}>
-      <Icon name="arrow_back" color="#fff" />
-      <Text style={[styles.backText, { color: '#fff' }]}>ADMIN</Text>
-    </TouchableOpacity>
-    <View style={styles.sosCenter}>
-      <TouchableOpacity style={styles.sosButton}>
+const SOSScreen = ({ onBack }: any) => (
+  <View style={[styles.full, { backgroundColor: '#450a0a', padding: 24, paddingTop: 60 }]}>
+    <TouchableOpacity onPress={onBack} style={styles.backRow}><Icon name="arrow_back" color="#fff" /><Text style={styles.backText}>BACK</Text></TouchableOpacity>
+    <View style={styles.centered}>
+      <TouchableOpacity style={styles.sosCircle}>
         <Text style={styles.sosText}>SOS</Text>
       </TouchableOpacity>
       <Text style={styles.sosInstruction}>HOLD FOR 3 SECONDS</Text>
@@ -335,286 +303,87 @@ const SOSScreen = ({ onBack, theme }: any) => (
   </View>
 );
 
-const AnalyticsScreen = ({ onBack, theme }: any) => (
+const AnalyticsScreen = ({ onBack }: any) => (
   <View style={styles.screenPadding}>
-     <TouchableOpacity onPress={onBack} style={styles.backButton}>
-      <Icon name="arrow_back" color={theme.text} />
-      <Text style={[styles.backText, { color: theme.text }]}>ADMIN</Text>
-    </TouchableOpacity>
-    <Text style={[styles.screenHeader, { color: theme.text }]}>Analytics</Text>
-    <View style={[styles.analyticsCard, { backgroundColor: theme.surface }]}>
-      <Text style={[styles.label, { color: theme.subtext }]}>WEEKLY EFFICIENCY</Text>
-      <Text style={[styles.analyticsVal, { color: theme.text }]}>94%</Text>
+    <TouchableOpacity onPress={onBack} style={styles.backRow}><Icon name="arrow_back" color="#fff" /><Text style={styles.backText}>BACK</Text></TouchableOpacity>
+    <Text style={styles.screenTitle}>Fuel & Safety</Text>
+    <View style={styles.analyticsBox}>
+      <Text style={styles.inputLabel}>AVERAGE EFFICIENCY</Text>
+      <Text style={styles.analyticsBig}>9.4 <Text style={styles.unit}>MPG</Text></Text>
     </View>
   </View>
 );
 
-const MenuBtn = ({ icon, label, color, onPress, theme }: any) => (
-  <TouchableOpacity style={[styles.gridBtn, { backgroundColor: theme.surface }]} onPress={onPress}>
-    <Icon name={icon} color={color} size={32} />
-    <Text style={[styles.gridLabel, { color: theme.text }]}>{label}</Text>
-  </TouchableOpacity>
+const HistoryScreen = ({ onBack }: any) => (
+  <View style={styles.screenPadding}>
+    <TouchableOpacity onPress={onBack} style={styles.backRow}><Icon name="arrow_back" color="#fff" /><Text style={styles.backText}>BACK</Text></TouchableOpacity>
+    <Text style={styles.screenTitle}>Attendance History</Text>
+    <View style={styles.historyItem}><Text style={styles.historyText}>Oct 24 - Boarded Bus</Text><Text style={styles.historyTime}>7:32 AM</Text></View>
+    <View style={styles.historyItem}><Text style={styles.historyText}>Oct 24 - Arrived School</Text><Text style={styles.historyTime}>8:05 AM</Text></View>
+  </View>
 );
 
 // --- Styles ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  topActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 16,
-    gap: 12,
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    zIndex: 100,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  screenCenter: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  screenPadding: {
-    flex: 1,
-    padding: 24,
-    paddingTop: 80,
-  },
-  logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: 8,
-    marginBottom: 40,
-  },
-  roleList: {
-    width: '100%',
-    gap: 16,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-  },
-  cardIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  cardTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  backText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  loginTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 32,
-  },
-  form: {
-    width: '100%',
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  input: {
-    height: 60,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    fontSize: 16,
-  },
-  primaryButton: {
-    backgroundColor: COLORS.primary,
-    height: 60,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 32,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  errorText: {
-    color: COLORS.error,
-    fontSize: 12,
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  screenHeader: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  gridBtn: {
-    width: '48%',
-    height: 120,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-  },
-  gridLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 32,
-    marginBottom: 16,
-  },
-  activityCard: {
-    padding: 20,
-    borderRadius: 24,
-  },
-  activityText: {
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statusCard: {
-    padding: 24,
-    borderRadius: 30,
-    marginBottom: 20,
-  },
-  statusLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  statusTime: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    marginVertical: 10,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
-    marginTop: 10,
-  },
-  progress: {
-    height: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 3,
-  },
-  wideCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    borderRadius: 24,
-    gap: 16,
-  },
-  wideCardText: {
-    fontWeight: 'bold',
-  },
-  historyItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  historyDate: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  historyStatus: {
-    fontSize: 12,
-  },
-  historyTime: {
-    fontWeight: '700',
-  },
-  mapPlaceholder: {
-    height: 250,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sosCenter: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sosButton: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: COLORS.error,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 10,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  sosText: {
-    color: '#fff',
-    fontSize: 48,
-    fontWeight: '900',
-  },
-  sosInstruction: {
-    color: '#fff',
-    marginTop: 40,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    opacity: 0.6,
-  },
-  analyticsCard: {
-    padding: 24,
-    borderRadius: 30,
-  },
-  analyticsVal: {
-    fontSize: 48,
-    fontWeight: '900',
-  }
+  container: { flex: 1 },
+  full: { flex: 1 },
+  padding: { padding: 24 },
+  screenPadding: { flex: 1, padding: 24, paddingTop: 60 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  headerActions: { position: 'absolute', top: 12, right: 12, zIndex: 100 },
+  circleBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.dark.surface, justifyContent: 'center', alignItems: 'center' },
+  logoContainer: { width: 100, height: 100, borderRadius: 30, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  title: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: -1 },
+  subtitle: { fontSize: 14, color: COLORS.dark.subtext, marginTop: 8, marginBottom: 40 },
+  roleList: { width: '100%', paddingHorizontal: 20, gap: 12 },
+  roleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.dark.surface, padding: 16, borderRadius: 20 },
+  roleIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  roleText: { flex: 1, color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  backText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginLeft: 8 },
+  screenTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 30 },
+  inputGroup: { width: '100%' },
+  inputLabel: { color: COLORS.dark.subtext, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  input: { height: 56, backgroundColor: COLORS.dark.surface, borderRadius: 16, paddingHorizontal: 16, color: '#fff', fontSize: 16, marginTop: 6 },
+  primaryBtn: { backgroundColor: COLORS.primary, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 32 },
+  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  errorText: { color: COLORS.error, fontSize: 12, marginTop: 12, textAlign: 'center' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: 60 },
+  dashboardTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  addBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.dark.border },
+  tab: { flex: 1, paddingVertical: 16, alignItems: 'center' },
+  activeTab: { borderBottomWidth: 2, borderBottomColor: COLORS.primary },
+  tabLabel: { color: COLORS.dark.subtext, fontSize: 12, fontWeight: 'bold' },
+  activeTabText: { color: COLORS.primary },
+  actionGrid: { flexDirection: 'row', gap: 12, padding: 24 },
+  actionBtn: { flex: 1, backgroundColor: COLORS.dark.surface, borderRadius: 24, padding: 20, alignItems: 'center' },
+  actionIcon: { width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  actionLabel: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  listCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.dark.surface, padding: 16, borderRadius: 16, marginBottom: 10 },
+  listIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  listTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  listSub: { color: COLORS.dark.subtext, fontSize: 11 },
+  // FIX: Added missing listInfo style property
+  listInfo: { flex: 1 },
+  heroCard: { padding: 24, borderRadius: 24, marginBottom: 20 },
+  heroLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: 'bold' },
+  heroValue: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginTop: 4 },
+  heroSub: { color: '#fff', fontSize: 14, opacity: 0.8, marginTop: 2 },
+  mapPlaceholder: { height: 260, backgroundColor: COLORS.dark.surface, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  mapText: { color: COLORS.dark.subtext, marginTop: 12, fontSize: 12 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.dark.surface, padding: 20, borderRadius: 20, gap: 16 },
+  menuText: { flex: 1, color: '#fff', fontWeight: 'bold' },
+  historyItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.dark.border },
+  historyText: { color: '#fff', fontSize: 14 },
+  historyTime: { color: COLORS.primary, fontWeight: 'bold' },
+  sosCircle: { width: 180, height: 180, borderRadius: 90, backgroundColor: COLORS.error, justifyContent: 'center', alignItems: 'center', borderWidth: 8, borderColor: 'rgba(255,255,255,0.1)' },
+  sosText: { color: '#fff', fontSize: 44, fontWeight: '900' },
+  sosInstruction: { color: '#fff', marginTop: 32, opacity: 0.5, fontWeight: 'bold' },
+  analyticsBox: { backgroundColor: COLORS.dark.surface, padding: 24, borderRadius: 24 },
+  analyticsBig: { fontSize: 48, fontWeight: '900', color: '#fff' },
+  unit: { fontSize: 16, color: COLORS.dark.subtext },
+  progressContainer: { height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, marginTop: 20 },
+  progressFill: { width: '70%', height: '100%', backgroundColor: '#fff', borderRadius: 3 },
+  form: { gap: 10 }
 });
