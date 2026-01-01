@@ -1,0 +1,7 @@
+{
+  "name": "SafeRoute 360 m2",
+  "description": "A comprehensive school transport management system featuring real-time route tracking, driver performance analytics, and emergency SOS systems.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
